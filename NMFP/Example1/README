@@ -1,0 +1,3 @@
+1.Please use "SimpleSimulation.R" to reproduce the simulation study described in section "Simulation study on the effects of expression levels" in the NMFP paper. "SimpleSimulation.R" is self contained, so it is not necessary to look into the .R files in 'NMFP_code' dir.
+
+2.Before running "SimpleSimulation.R", please set the variable "code_file" to the path of 'NMFP/NMFP_code'.

@@ -1,0 +1,27 @@
+To run NMFP, please follow the steps below.
+
+1. Prepare an annotation .gtf file with the format below. This .gtf file is a necessary input required by NMFP. Every row correspondes a transcript.
+
+
+3R	protein_coding	exon	9207799	9207980	.	+	.	 gene_id "FBgn0038145"; transcript_id "FBtr0082751"; exon_number "1"; gene_name "Droj2"; transcript_name "Droj2-RA"; seqedit "false";
+3R	protein_coding	exon	9209186	9210301	.	+	.	 gene_id "FBgn0038145"; transcript_id "FBtr0082751"; exon_number "2"; gene_name "Droj2"; transcript_name "Droj2-RA"; seqedit "false";
+3R	protein_coding	CDS	9209201	9210301	.	+	0	 gene_id "FBgn0038145"; transcript_id "FBtr0082751"; exon_number "2"; gene_name "Droj2"; transcript_name "Droj2-RA"; protein_id "FBpp0082219";
+
+
+Warning: Some problems may occur if the format of the annotation file is different from what NMFP is designed to process. 
+
+2. Generate gene lists from the annotation .gtf file (example as following)
+
+G1	3R	9207799	9211013	+	FBtr0082751	FBgn0038145
+G1	3R	9207840	9211013	+	FBtr0082755	FBgn0038145
+G1	3R	9208544	9211013	+	FBtr0082752	FBgn0038145
+G1	3R	9208987	9211013	+	FBtr0082753	FBgn0038145
+G1	3R	9209056	9211013	+	FBtr0082754	FBgn0038145
+
+Command (bash): Rscript ../NMFP_code/MakeGenelist.R --anno_path=./FBgn0038145_anno.gtf --chr=3R --output_path=./FBgn0038145_genelist.txt
+
+3. Apply NMFP to get a pool of isoform candidates for each gene.
+
+Command (bash):  Rscript ../NMFP_code/NMFPreselection.R --code_path=../NMFP_code/ --data_path=./data/ --anno_path=./FBgn0038145_anno.gtf --genelist_path=./FBgn0038145_genelist.txt --ncores=2 --output_path=./FBgn0038145_NMFP.gtf
+
+Warnings: Some problems may occur if the format of the annotation file is different from what NMFP is supposed to process. Please send an email to the author to figure out this problem.

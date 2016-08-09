@@ -1,0 +1,53 @@
+To run NMFP, please follow the steps below.
+
+1. Install R packages: Biobase, parallel, rbamtools, compiler, optparse.
+
+2. Prepare an annotation .gtf file with the format below. This .gtf file is a necessary input required by NMFP. Every row correspondes a transcript.
+
+
+3R	protein_coding	exon	9207799	9207980	.	+	.	 gene_id "FBgn0038145"; transcript_id "FBtr0082751"; exon_number "1"; gene_name "Droj2"; transcript_name "Droj2-RA"; seqedit "false";
+3R	protein_coding	exon	9209186	9210301	.	+	.	 gene_id "FBgn0038145"; transcript_id "FBtr0082751"; exon_number "2"; gene_name "Droj2"; transcript_name "Droj2-RA"; seqedit "false";
+3R	protein_coding	CDS	9209201	9210301	.	+	0	 gene_id "FBgn0038145"; transcript_id "FBtr0082751"; exon_number "2"; gene_name "Droj2"; transcript_name "Droj2-RA"; protein_id "FBpp0082219";
+
+
+Warning: Some problems may occur if the format of the annotation file is different from what NMFP is designed to process. 
+
+3. Generate gene lists from the annotation .gtf file. The output gene lists will have the format below.
+
+G1	3R	9207799	9211013	+	FBtr0082751	FBgn0038145
+G1	3R	9207840	9211013	+	FBtr0082755	FBgn0038145
+G1	3R	9208544	9211013	+	FBtr0082752	FBgn0038145
+G1	3R	9208987	9211013	+	FBtr0082753	FBgn0038145
+G1	3R	9209056	9211013	+	FBtr0082754	FBgn0038145
+
+
+Command (bash):  Rscript ../NMFP_code/MakeGenelist.R [options]
+
+--anno_path: the path to the annotation .gtf file
+--chr: the chromosome to generate gene lists from. If chr == NULL, gene lists will be generated for all the chromosomes in the annotation.
+--output_path: the path to output gene lists
+
+
+4. Apply NMFP to get a pool of isoform candidates for each gene.
+
+Command (bash): Rscript NMFP_code/NMFPreselection.R [options] 
+
+--code_path: the path to the directory 'NMFP_code' (e.g. --code_path=***)
+--data_path: the path to the data directory, where all the .sorted.bam and .sorted.bam.bai are stored.
+--anno_path: the path to the annotation file prepared in Step 2.
+--genelist_path: the path to the genelist file generated in step 3.
+--if_rank_anno: if use the annotation file to estimate the rank (default=TRUE)
+--nrun: number of repitions of NMFP (default=100)
+--ncores: number of cores for parallization (default=1).
+--LenRead: the length of each read (default=76).
+--output_path: the path to output
+
+
+#################################################################################
+
+For example commands and details about running NMFP, please see Example 2.
+
+#################################################################################
+
+Please send an email to the authors (Yuting Ye: yeyt@berkeley.edu and Jingyi Jessica Li: jli@stat.ucla.edu) if you have any questions about using our NMFP method.
+
