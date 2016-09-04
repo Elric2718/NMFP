@@ -1,41 +1,41 @@
 # load packages and .R files
-library(Biobase)
 library(parallel)
 library(rbamtools)
 library(compiler)
 library(optparse)
+library(dplyr)
 
 ## arguments
 option_list <- list(
-  make_option(c("--code_path"), type="character", default=NULL,
-              help="Set the path to the codes.",
-              metavar="code_path"),
-  make_option(c("--data_path"), type="character", default=NULL,
-              help="Set the path to the data of .bam.",
-              metavar="data_path"),
-  make_option(c("--anno_path"), type="character", default=NULL,
+  make_option(c("--code_path"), type="character", default = NULL,
+              help = "Set the path to the codes.",
+              metavar = "code_path"),
+  make_option(c("--data_path"), type = "character", default = NULL,
+              help = "Set the path to the data of .bam.",
+              metavar = "data_path"),
+  make_option(c("--anno_path"), type = "character", default = NULL,
               help="Set the path to the annotation file.",
-              metavar="anno_path"),
-  make_option(c("--genelist_path"), type="character", default=NULL,
-              help="Set the path to the genelist.",
-              metavar="genelist_path"),
-  make_option(c("--if_rank_anno"), type="logical", default=TRUE,
-              help="If use annotation to estimate the rank of NMFP.",
-              metavar="if_rank_anno"),
-  make_option(c("--nrun"), type="integer", default=100,
-              help="Set the number of repitions for NMFP",
-              metavar="nrun"),
-  make_option(c("--ncores"), type="integer", default=1,
-              help="Number of cores to use [default %default]",
-              metavar="ncores"),
-  make_option(c("--LenRead"), type="integer", default=76,
-              help="Length of the reads.",
-              metavar="LenRead"),
-  make_option(c("--output_path"), type="character", default=NULL,
-              help="Set the path to the output of NMFP.",
-              metavar="output_path")
+              metavar = "anno_path"),
+  make_option(c("--genelist_path"), type = "character", default = NULL,
+              help = "Set the path to the genelist.",
+              metavar = "genelist_path"),
+  make_option(c("--if_rank_anno"), type = "logical", default = TRUE,
+              help = "If use annotation to estimate the rank of NMFP.",
+              metavar = "if_rank_anno"),
+  make_option(c("--nrun"), type="integer", default = 100,
+              help = "Set the number of repitions for NMFP",
+              metavar = "nrun"),
+  make_option(c("--ncores"), type = "integer", default = 1,
+              help = "Number of cores to use [default %default]",
+              metavar = "ncores"),
+  make_option(c("--len_read"), type = "integer", default = 76,
+              help = "Length of the reads.",
+              metavar = "len_read"),
+  make_option(c("--output_path"), type = "character", default = NULL,
+              help = "Set the path to the output of NMFP.",
+              metavar = "output_path")
 )
-opt <- parse_args(OptionParser(option_list=option_list))
+opt <- parse_args(OptionParser(option_list = option_list))
 
 
 code_path <- opt$code_path
@@ -45,249 +45,131 @@ genelist_path <- opt$genelist_path
 if_rank_anno <- opt$if_rank_anno
 nrun <- opt$nrun
 ncores <- opt$ncores
-LenRead <- opt$LenRead
+len_read <- opt$len_read
 output_path <- opt$output_path
 
-
-source(paste(code_path,"ExonBoundary.R",sep=""))
-source(paste(code_path,"FindTypes2.R",sep=""))
-source(paste(code_path,"PreSelection.R",sep=""))
-source(paste(code_path,"VoteforIsoform.R",sep=""))
-source(paste(code_path,"ncNMF2.R",sep=""))
-source(paste(code_path,"VisualizeG5.R",sep=""))
-source(paste(code_path,"VisualCheck.R",sep=""))
-source(paste(code_path,"VisualCheck4.R",sep=""))
-source(paste(code_path,"RankDetermine2.R",sep=""))
-source(paste(code_path,"Write_gtf.R",sep=""))
-source(paste(code_path,"ContradictTable.R",sep=""))
-source(paste(code_path,"Normalization.R",sep=""))
-source(paste(code_path,"PairReadLength.R",sep=""))
-source(paste(code_path,"AssignMatrix4.R",sep=""))
-source(paste(code_path,"ReadCount3.R",sep=""))
-
-cmp_ncNMF2<-cmpfun(ncNMF2)
-
-#setwd("~/Desktop/NMFP/Example2/")
-
-
+### load the source codes
+source(paste(code_path, "helper.R", sep = ""))
+cmp_ncNMF2 <- cmpfun(ncNMF2)
 
 ### list files
-file_name <- list.files(path=data_path)
+file_name <- list.files(path = data_path)
 
 ### grep .sorted.bam
-input_file <- file_name[grep(pattern= "sorted.bam$", file_name)]
+input_file <- file_name[grep(pattern = "sorted.bam$", file_name)]
 input_file <- paste0(data_path, input_file)
 
-###prepare files
-anno<-read.table(anno_path,fill=TRUE)
-genelist<-read.table(file=genelist_path)
+### prepare files
+anno <- read.table(anno_path, fill = TRUE)
+genelist <- read.table(file = genelist_path)
 
-## sets for gene indexes
-geneindex <- as.character(unique(genelist[,1]))
+### sets for gene indexes
+genes_index <- as.character(unique(genelist[, 1]))
 
-
-
-NMFResult<-mclapply(X= length(geneindex),mc.cores=ncores,FUN=function(k){
+nmf_result <- mclapply(X = length(genes_index), mc.cores = ncores, FUN = function(k){
+  ## NMFP
+  gindex <- genes_index[k]
+  gname <- as.character(genelist[which(as.character(genelist[, 1]) == gindex)[1], 7])
   
-  ###NMFP
-  Gene_Index <- geneindex[k]
-  Gene_Name <- as.character(genelist[which(as.character(genelist[,1])==Gene_Index)[1],7])
+  exonlist <- ExonBoundary(genelist = genelist, anno = anno, gene_index = gindex, len_read = len_read)
+  chr <- exonlist$chr
+  strand <- exonlist$strand
+  strand <- c(strand, switch(strand, "-" = TRUE, "+" = FALSE))
+  gene_start <- exonlist$gene_start
+  gene_end <- exonlist$gene_end
+  exon_pool <- exonlist$exon_pool
+  nexon <- ncol(exon_pool)
+  typesbox <- FindTypes(nexon)
+  len_exon <- exon_pool[2, ] - exon_pool[1, ] + 1
+  anno_trans <- exonlist$anno_trans
   
-  ExonList<-ExonBoundary(genelist=genelist, Anno=anno,Gene=Gene_Index,LenRead=LenRead,ifvis=FALSE,Emode=2,Anno_mode=2)
-  chr<-ExonList$chr
-  strand<-ExonList$strand
-  strand<-c(strand,switch(strand,"-"=TRUE,"+"=FALSE))
-  GeneStart<-ExonList$GeneStart
-  GeneEnd<-ExonList$GeneEnd
-  ExonPool<-ExonList$ExonPool
-  nExon<-length(ExonPool[1,])
-  TypesBox_two<-FindTypes2(nExon)
-  LenExon<-ExonPool[2,]-ExonPool[1,]+1
-  AnnoTrans<-ExonList$annoTrans
-  #AnnoTrans
+  readbin <- AssignMatrix(chr = chr, strand = strand, gene_start = gene_start, gene_end = gene_end, exon_pool = exon_pool, typesbox = typesbox, len_read = len_read, input_file = input_file)
+  rownames(readbin) <- typesbox
   
-  ReadBin_two<-AssignMatrix4(chr=chr,strand=strand,GeneStart=GeneStart,GeneEnd=GeneEnd,ExonPool=ExonPool,TypesBox=TypesBox_two,LenRead=LenRead,input_file=input_file)
-  rownames(ReadBin_two)<-TypesBox_two
+  readbin <- readbin[, colSums(readbin) > 0]
   
-  ReadBin_two<-ReadBin_two[,which(apply(ReadBin_two,2,sum)>0)]
+  ## normalization
+  nmatrix <- Normalization(readbin, exon_pool + gene_start - 1, len_read, typesbox)
   
-  ###normalization
-  NormMatrix<-Normalization(ReadBin_two,ExonPool+GeneStart-1,76,TypesBox_two)
-  
-  rank0<-length(ExonList$AnnoTrans)
+  rank0 <- length(exonlist$anno_trans)
   if(if_rank_anno){
     rank <- rank0
   }else{
     rank <- 0
   }
   
-  BIsoform<-VoteforIsoform(rank=rank,nrun=nrun,alpha0=1,
-                           NormMatrix=NormMatrix,TypesBox=TypesBox_two,ExonPool=ExonPool,
-                           LenRead=LenRead,Gcutoff=0.4,mode=1,
-                           input_file=code_path)
-  IsoformSet<-BIsoform$IsoformSet
-  rank<-BIsoform$rank
+  bisoform <- VoteforIsoform(nmatrix = nmatrix, rank = rank, nrun = nrun, typesbox = typesbox, exon_pool = exon_pool, len_read = len_read, code_path = code_path)
+  isoform_set <- bisoform$isoform_set
+  rank <- bisoform$rank
+  sum_read <- rowMeans(nmatrix)
   
-  
-  ### post selection
-  if(length(names(IsoformSet))>10){
-    PreSelection1_1<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=1)
-    PreSelection1_2<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=2)
-    PreSelection1_3<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=3)
-    PreSelection1_4<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=4)
+  ## post selection
+  # class 1
+  if(length(names(isoform_set)) > 10){
+    preselection1 <- PreFilter(names(isoform_set), sum_read, exon_pool, len_read, FALSE, anno_trans)
   }else{
-    PreSelection1_1<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection1_2<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection1_3<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection1_4<-PreSelection(Candidates=names(IsoformSet),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
+    preselection1 <- PreFilter(names(isoform_set), sum_read, exon_pool, len_read, TRUE, anno_trans)
   }
-  if(length(which(IsoformSet>=2))>10){
-    PreSelection2_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=1)
-    PreSelection2_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=2)
-    PreSelection2_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=3)
-    PreSelection2_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=4)
+
+  # class 2
+  index_class2 <- which(isoform_set >= 2)
+  if(length(index_class2) > 10){
+    preselection2 <- PreFilter(names(isoform_set[index_class2]), sum_read, exon_pool, len_read, FALSE, anno_trans)
   }else{
-    PreSelection2_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection2_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection2_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection2_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=2)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
+    preselection2 <- PreFilter(names(isoform_set[index_class2]), sum_read, exon_pool, len_read, TRUE, anno_trans)
   }
-  if(length(which(IsoformSet>=5))>10){
-    PreSelection3_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=1)
-    PreSelection3_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=2)
-    PreSelection3_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=3)
-    PreSelection3_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=4)
+
+  # class 3
+  index_class3 <- which(isoform_set >= 5)
+  if(length(index_class3) > 10){
+    preselection3 <- PreFilter(names(isoform_set[index_class3]), sum_read, exon_pool, len_read, FALSE, anno_trans)
   }else{
-    PreSelection3_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection3_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection3_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection3_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=5)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
+    preselection3 <- PreFilter(names(isoform_set[index_class3]), sum_read, exon_pool, len_read, TRUE, anno_trans)
   }
-  if(length(which(IsoformSet>=10))>10){
-    PreSelection4_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=1)
-    PreSelection4_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=2)
-    PreSelection4_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=3)
-    PreSelection4_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=4)
+
+  # class 4
+  index_class4 <- which(isoform_set >= 10)
+  if(length(index_class4) > 10){
+    preselection4 <- PreFilter(names(isoform_set[index_class4]), sum_read, exon_pool, len_read, FALSE, anno_trans)
   }else{
-    PreSelection4_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection4_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection4_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection4_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=10)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
+    preselection4 <- PreFilter(names(isoform_set[index_class4]), sum_read, exon_pool, len_read, TRUE, anno_trans)
   }
-  if(length(which(IsoformSet>=25))>10){
-    PreSelection5_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=1)
-    PreSelection5_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=2)
-    PreSelection5_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=3)
-    PreSelection5_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,mode=4)
+
+  # class 5
+  index_class5 <- which(isoform_set >= 25)
+  if(length(index_class5) > 10){
+    preselection5 <- PreFilter(names(isoform_set[index_class5]), sum_read, exon_pool, len_read, FALSE, anno_trans)
   }else{
-    PreSelection5_1<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection5_2<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection5_3<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
-    PreSelection5_4<-PreSelection(Candidates=names(IsoformSet[which(IsoformSet>=25)]),SumRead=apply(NormMatrix,1,mean),ExonPool=ExonPool,LenRead=LenRead,ifPart=TRUE)
+    preselection5 <- PreFilter(names(isoform_set[index_class5]), sum_read, exon_pool, len_read, TRUE, anno_trans)
   }
   
+  preselection_all <- list(preselection1$preselection1, preselection1$preselection2, preselection1$preselection3, preselection1$preselection4,
+                           preselection2$preselection1, preselection2$preselection2, preselection2$preselection3, preselection2$preselection4,
+                           preselection3$preselection1, preselection3$preselection2, preselection3$preselection3, preselection3$preselection4,
+                           preselection4$preselection1, preselection4$preselection2, preselection4$preselection3, preselection4$preselection4,
+                           preselection5$preselection1, preselection5$preselection2, preselection5$preselection3, preselection5$preselection4)
+  preslct_all <- list(preselection1$preslct1, preselection1$preslct2, preselection1$preslct3, preselection1$preslct4,
+                      preselection2$preslct1, preselection2$preslct2, preselection2$preslct3, preselection2$preslct4,
+                      preselection3$preslct1, preselection3$preslct2, preselection3$preslct3, preselection3$preslct4,
+                      preselection4$preslct1, preselection4$preslct2, preselection4$preslct3, preselection4$preslct4,
+                      preselection5$preslct1, preselection5$preslct2, preselection5$preslct3, preselection5$preslct4)
   
-  #length(PreSelection1)
-  preslct1_1<-NULL
-  preslct1_2<-NULL
-  preslct1_3<-NULL
-  preslct1_4<-NULL
-  for(i in 1:length(AnnoTrans)){
-    preslct1_1<-c(preslct1_1,PreSelection1_1[which(is.element(PreSelection1_1,AnnoTrans[i]))])
-    preslct1_2<-c(preslct1_2,PreSelection1_2[which(is.element(PreSelection1_2,AnnoTrans[i]))])
-    preslct1_3<-c(preslct1_3,PreSelection1_3[which(is.element(PreSelection1_3,AnnoTrans[i]))])
-    preslct1_4<-c(preslct1_4,PreSelection1_4[which(is.element(PreSelection1_4,AnnoTrans[i]))])
-  }
-  #print(preslct1)
+  len_pre <- lapply(preselection_all, function(elem){length(elem)}) %>% do.call(what = c)
+  order_pre <- order(len_pre) 
   
+  ## choose a filtering level
+  index_cand <- which(len_pre[order_pre] <= length(anno_trans) * 10)
+  if(length(index_cand) == 0){index_cand <- 1}else{index_cand <- index_cand[length(index_cand)]}
+  isoform_candidates <- preselection_all[[order_pre[index_cand]]]
+  matched_candidates <- preslct_all[[order_pre[index_cand]]]
   
-  
-  #length(PreSelection2)
-  preslct2_1<-NULL
-  preslct2_2<-NULL
-  preslct2_3<-NULL
-  preslct2_4<-NULL
-  for(i in 1:length(AnnoTrans)){
-    preslct2_1<-c(preslct2_1,PreSelection2_1[which(is.element(PreSelection2_1,AnnoTrans[i]))])
-    preslct2_2<-c(preslct2_2,PreSelection2_2[which(is.element(PreSelection2_2,AnnoTrans[i]))])
-    preslct2_3<-c(preslct2_3,PreSelection2_3[which(is.element(PreSelection2_3,AnnoTrans[i]))])
-    preslct2_4<-c(preslct2_4,PreSelection2_4[which(is.element(PreSelection2_4,AnnoTrans[i]))])
-  }
-  #print(preslct2)
-  
-  
-  
-  #length(PreSelection3)
-  preslct3_1<-NULL
-  preslct3_2<-NULL
-  preslct3_3<-NULL
-  preslct3_4<-NULL
-  for(i in 1:length(AnnoTrans)){
-    preslct3_1<-c(preslct3_1,PreSelection3_1[which(is.element(PreSelection3_1,AnnoTrans[i]))])
-    preslct3_2<-c(preslct3_2,PreSelection3_2[which(is.element(PreSelection3_2,AnnoTrans[i]))])
-    preslct3_3<-c(preslct3_3,PreSelection3_3[which(is.element(PreSelection3_3,AnnoTrans[i]))])
-    preslct3_4<-c(preslct3_4,PreSelection3_4[which(is.element(PreSelection3_4,AnnoTrans[i]))])
-  }
-  #print(preslct3)
-  
-  #length(PreSelection4)
-  preslct4_1<-NULL
-  preslct4_2<-NULL
-  preslct4_3<-NULL
-  preslct4_4<-NULL
-  for(i in 1:length(AnnoTrans)){
-    preslct4_1<-c(preslct4_1,PreSelection4_1[which(is.element(PreSelection4_1,AnnoTrans[i]))])
-    preslct4_2<-c(preslct4_2,PreSelection4_2[which(is.element(PreSelection4_2,AnnoTrans[i]))])
-    preslct4_3<-c(preslct4_3,PreSelection4_3[which(is.element(PreSelection4_3,AnnoTrans[i]))])
-    preslct4_4<-c(preslct4_4,PreSelection4_4[which(is.element(PreSelection4_4,AnnoTrans[i]))])
-  }
-  #print(preslct4)
-  
-  preslct5_1<-NULL
-  preslct5_2<-NULL
-  preslct5_3<-NULL
-  preslct5_4<-NULL
-  for(i in 1:length(AnnoTrans)){
-    preslct5_1<-c(preslct5_1,PreSelection5_1[which(is.element(PreSelection5_1,AnnoTrans[i]))])
-    preslct5_2<-c(preslct5_2,PreSelection5_2[which(is.element(PreSelection5_2,AnnoTrans[i]))])
-    preslct5_3<-c(preslct5_3,PreSelection5_3[which(is.element(PreSelection5_3,AnnoTrans[i]))])
-    preslct5_4<-c(preslct5_4,PreSelection5_4[which(is.element(PreSelection5_4,AnnoTrans[i]))])
-  }
-  
-  
-  ##postselection for nExon<=10
-  PreSelection_all<-list(PreSelection1_1,PreSelection1_2,PreSelection1_3,PreSelection1_4,
-                         PreSelection2_1,PreSelection2_2,PreSelection2_3,PreSelection2_4,
-                         PreSelection3_1,PreSelection3_2,PreSelection3_3,PreSelection3_4,
-                         PreSelection4_1,PreSelection4_2,PreSelection4_3,PreSelection4_4,
-                         PreSelection5_1,PreSelection5_2,PreSelection5_3,PreSelection5_4)
-  preslct_all<-list(preslct1_1,preslct1_2,preslct1_3,preslct1_4,
-                    preslct2_1,preslct2_2,preslct2_3,preslct2_4,
-                    preslct3_1,preslct3_2,preslct3_3,preslct3_4,
-                    preslct4_1,preslct4_2,preslct4_3,preslct4_4,
-                    preslct5_1,preslct5_2,preslct5_3,preslct5_4)
-  
-  PreLen<-listLen(PreSelection_all)
-  PreOrder<-order(PreLen)
-  
-  
-  
-  IndexCand<-which(PreLen[PreOrder]<=length(AnnoTrans)*10)
-  if(length(IndexCand)==0){IndexCand<-1}else{IndexCand<-IndexCand[length(IndexCand)]}
-  Candidates<-PreSelection_all[[PreOrder[IndexCand]]]
-  candidates<-preslct_all[[PreOrder[IndexCand]]]
-  
-  
-  
-  
-  print(paste("Process: Gene ",k,"/",length(geneindex),
-              ". The number of subexons is ",nExon,". The number of annotated isoforms is ",length(AnnoTrans),". ",
-              "The number of candidates is ",length(Candidates),".",sep=""))
-  
+  print(paste("Process: Gene ", k, "/", length(genes_index),
+              ". The number of subexons is ", nexon, ". The number of annotated isoforms is ", length(anno_trans), ". ",
+              "The number of candidates is ", length(isoform_candidates), ", among which, ", length(matched_candidates), 
+              " match the annotation.", sep = ""))
   
   ## NMFP.gtf
-  Result_to_gtf<-Write_gtf(Candidates=Candidates,ExonPool=ExonPool,chr=chr,strand=strand,Gene_Name=Gene_Name,GeneStart=GeneStart)
-  write.table(Result_to_gtf,file=output_path,quote=F,row.names=F,col.names=F,sep="\t",append=TRUE)
-  
+  result_to_gtf <- WriteGTF(candidates = isoform_candidates, exon_pool = exon_pool, chr = chr, strand = strand, gene_name = gname, gene_start = gene_start)
+  write.table(result_to_gtf, file = output_path, quote = F, row.names = F, col.names = F, sep = "\t", append = TRUE)
 })
 

@@ -10,7 +10,19 @@ To run NMFP, please follow the steps below.
 
 Warning: Some problems may occur if the format of the annotation file is different from what NMFP is designed to process. 
 
-2. Generate gene lists from the annotation .gtf file (example as following)
+2. Generate the trimmed annotation file with format as following. All the columns are required for further processing. The columns are: chromosome, feature, start, end, strand,
+transcript_id, gene_id respectively.
+
+3R	exon	9207799	9207980	+	FBtr0082751	FBgn0038145
+3R	exon	9209186	9210301	+	FBtr0082751	FBgn0038145
+3R	CDS	9209201	9210301	+	FBtr0082751	FBgn0038145
+3R	start_codon	9209201	9209203	+	FBtr0082751	FBgn0038145
+3R	exon	9210392	9211013	+	FBtr0082751	FBgn0038145
+3R	CDS	9210392	9210499	+	FBtr0082751	FBgn0038145
+3R	stop_codon	9210500	9210502	+	FBtr0082751	FBgn0038145
+
+
+Then make the gene lists from the trimmed annotation .gtf file. The output gene lists will have the format below. The columns are gene index, chromosome, start, end, strand, transcript_id, gene_id.
 
 G1	3R	9207799	9211013	+	FBtr0082751	FBgn0038145
 G1	3R	9207840	9211013	+	FBtr0082755	FBgn0038145
@@ -18,10 +30,14 @@ G1	3R	9208544	9211013	+	FBtr0082752	FBgn0038145
 G1	3R	9208987	9211013	+	FBtr0082753	FBgn0038145
 G1	3R	9209056	9211013	+	FBtr0082754	FBgn0038145
 
+
 Command (bash): Rscript ../NMFP_code/MakeGenelist.R --anno_path=./FBgn0038145_anno.gtf --chr=3R --output_path=./FBgn0038145_genelist.txt
 
 3. Apply NMFP to get a pool of isoform candidates for each gene.
 
-Command (bash):  Rscript ../NMFP_code/NMFPreselection.R --code_path=../NMFP_code/ --data_path=./data/ --anno_path=./FBgn0038145_anno.gtf --genelist_path=./FBgn0038145_genelist.txt --ncores=2 --output_path=./FBgn0038145_NMFP.gtf
+Command (bash):  Rscript Rscript NMFP_code/NMFPreselection.R --code_path=NMFP_code/ --data_path=Example2/data/ --anno_path=Example2/FBgn0038145_anno_trimmed.txt --genelist_path=Example2/FBgn0038145_anno_genelist.txt --if_rank_anno=FALSE --nrun=100 --ncores=1 --len_read=76 --output_path=Example2/FBgn0038145_NMFP.gtf
 
 Warnings: Some problems may occur if the format of the annotation file is different from what NMFP is supposed to process. Please send an email to the author to figure out this problem.
+
+
+
